@@ -1,66 +1,116 @@
-# A new kind of zk-rollup with less on-chain data (e.g. 8 bytes for a batch of up to 65536 transfers from the same sender)
+# A zk-rollup that allows a sender to batch an unlimited number of transfers with only 5 bytes of calldata
 
-We introduce a Layer 2 solution which could be classified as a kind of zk-rollup, but needs less on-chain data than existing zk-rollups. For instance, this solution makes it possible for a sender to batch 65536 transfers to other users with only 8 bytes of calldata. These calldata savings are made possible by borrowing some ideas from Plasma, where each user stores some small piece of data that is needed for withdrawing in the case where the operator misbehaves. Unlike Plasma, however, users won't have to watch the chain for malicious behavior, and the security assumptions are the same as for existing zk-rollups.
+We introduce a Layer 2 solution which could be classified as a kind of zk-rollup, but needs much less on-chain data than existing zk-rollups. This proposal makes it possible for a sender to batch an arbitrary number of transfers to other accounts while only having to post 5 bytes of calldata on-chain. These calldata savings are made possible by borrowing some ideas from Plasma, where each user stores some small piece of data that is needed for withdrawing in the case where the operator misbehaves. Unlike Plasma, however, users won't have to watch the chain for malicious behavior, and the security assumptions are the same as for existing zk-rollups.
 
-See also:
-
-https://ethresear.ch/t/minimal-fully-generalized-s-ark-based-plasma/5580
-https://ethresear.ch/t/plasma-snapp-fully-verified-plasma-chain/3391
-https://ethresear.ch/t/plasma-snapp-1-bit/4802
-https://ethresear.ch/t/mvr-minimally-viable-rollback/7538
-
-## On-chain contract
+## L1 contract
 
 The rollup state is divided in two parts:
 
-- On-chain state
-- Off-chain state
+- **On-chain available state**: State *with* on-chain data availability
+- **Off-chain available state**: State *without* on-chain data availability
 
-The L1 contract stores a commitment (i.e. merkle root) to the on-chain state, and a commitment to the off-chain state. All changes to the on-chain state must be included as calldata. The on-chain state can always be reconstructed from the calldata as in a rollup, while the off-chain state must be provided off-chain by the operator.
+The L1 contract stores a common merkle root to both parts of the state. Any changes made to the on-chain available state must be provided in the calldata, which means that this state can always be reconstructed from the calldata. On the other hand, changes to the off-chain available state will be provided by any other means off-chain.
 
-In the worst case scenario, a malicious operator can make the off-chain state unavailable, but not the on-chain state.
+In addition to the state merkle root, the L1 contract also stores a list of operations called the *inbox*. Anyone can add an L1 operation (see below) to the inbox on L1. When posting a rollup block, the operator must process all operations in this list before processing the L2 operations included in the block.
 
-In addition to the state commitments, the L1 contract also stores a list of operations called the *inbox*. Anyone can add an operation to the inbox on L1. When posting a batch of updates, the operator must include all operations in the inbox before processing any other operations. This prevents the operator from censoring users.
+## Rollup blocks
 
-## Rollup batches
+The rollup operator is allowed to make changes to the rollup state by posting a rollup block to the L1 contract, which provides the following information in the tx calldata.
 
-We allow a designated operator to make changes to the state by posting a rollup batch to the L1 contract, which provides the following information in the tx calldata.
+1. The new common merkle root.
+2. A diff between the old and the new on-chain available state.
+3. A zk-proof that there exist a state with the old state root and a list of valid operations (see below) that when applied to the old state (after applying all operations in the inbox) gives a new state with the new state root, and that the diff provided above is correct.
 
-1. A diff between the old on-chain state and the new on-chain state.
-2. A commitment (i.e. a merkle root) to the new on-chain state
-3. A commitment (i.e. a merkle root) to the new off-chain state
-4. A zk-proof that there exist a list of valid operations (see below) that when applied to the old state (after applying all operations in the inbox) gives a new on-chain and off-chain state whose commitments are as provided above.
+If the above data is valid, the state root is updated and the inbox is emptied.
 
-If the above data is valid, the commitments in the contract storage are updated, and the inbox is cleared.
+Note that what we have described so far is a general framework for describing many L2 solutions. For instance:
+
+- If all rollup state is in the on-chain available part, and the off-chain available state is the empty set, we get existing zk-rollups.
+- If all rollup state is in the off-chain available part and the on-chain available state is the empty set, we get validiums.
+- If both parts of the state contains account state, we get volitions (e.g. zk-porter).
+
+Our proposal is neither of the above, and is described below.
 
 ## Rollup state
 
-Here we define the on-chain and off-chain rollup state.
+Here we define the schema of the rollup state.
 
-On-chain state:
-
-- `nonce : Address -> Integer`
-
-Off-chain state:
-
-- `balance : Address -> Value`
-- `pendingTransfers : Set(Transfer)`
-
-where `Transfer` is a tuple
+### On-chain available state
 
 ```
-( nonce : Integer
-, fromAddress : Address
-, toAddress : Address
-, amount : Value
-)
+OnChainAvailableState =
+  { finalizedBlockNum : Map(Address -> Integer)
+  }
+```
+
+### Off-chain available state
+
+```
+OffChainAvailableState =
+  { balanceOf : Map(Address -> Value)
+  , nonceOf : Map(Address -> Integer)
+  , pendingTransactions : Set(Transaction)
+  }
+```
+
+where `Transaction` is the type
+
+```
+Transaction =
+  { sender : Address
+  , recipient : Address
+  , amount : Value
+  , nonce : Integer
+  }
 ```
 
 ## Operations
 
+There are two kinds of operations available, L1 operations and L2 operations. L1 operations are added to the inbox on L1, while L2 operations are added by the operator in a rollup block.
+
+### L2 operations
+
+The operator is allowed to include the following operations in a rollup block.
+
+#### AddTransaction
+
+```
+AddTransaction(
+    transaction : Transaction
+  , signature : Signature of the transaction by the transaction's sender
+  )
+```
+
+Given a signed transaction, add the transaction to the set `pendingTransactions`, and increases `nonceOf(sender)` by one. It is required that the nonce of the transaction is one greater than the current value of `nonceOf(sender)`.
+
+#### FinalizeBlock
+
+```
+FinalizeBlock(
+    address : Address
+  , signature : Message "Finalize block blockNum" signed by the owner of address.
+  )
+```
+
+Executes the transactions in `pendingTransactions` whose sender is `address`, and sets `finalizedBlockNum(address)` to the current rollup block number. When a transaction is executed, it is removed from `pendingTransactions`, the amount is subtracted from the balance of `fromAddress` and added to the balance of `toAddress`.
+
+#### Withdraw
+
+```
+Withdraw(
+    fromAddress : Address
+  , toAddress : L1 Address
+  , amount : Value
+  )
+```
+
+Decreases the balance of `fromAddress` by `amount` and sends `amount` ETH to`toAddress` on L1.
+
 ### L1 operations
 
 The following operations can be added to the inbox in the L1 contract.
+
+#### Deposit
 
 ```
 Deposit(
@@ -68,123 +118,91 @@ Deposit(
 )
 ```
 
-Sends the included ETH to the specified L2 address.
+Adds the included ETH to the balance of `toAddress`.
+
+#### ForceWithdrawal
 
 ```
 ForceWithdrawal(
     fromAddress : Address
   , toAddress : L1 Address
-  , signature : Signature of the withdrawal by fromAddress
+  , amount : Value
+  , signature : Signature of the withdrawal request by fromAddress
   )
 ```
 
-Decreases the balance of `fromAddress` by `amount` and sends `amount` ETH to`toAddress` on L1. This is the same as the `Withdraw` L2 operation below, but on L1, in case the operator is censoring users.
-
-### L2 operations
-
-The operator is allowed to include the following operations in a batch:
-
-```
-AddTransfer(
-    transfer : Transfer
-  , signature : Signature of transfer by the transfer's fromAddress)
-```
-
-Given a signed transfer `(nonce, fromAddress, toAddress, amount)` add the transfer to the set `pendingTransfers`. It is required that `nonce = pendingNonce(address) + 1`, where  `pendingNonce(address)` is the maximum nonce among the pending transfers sent from the given address, or `nonce(address)` if there is no pending transfers from the address.
-
-```
-UpdateNonce(
-    address : Address
-  , newNonce : Integer
-  , signature : Message "Update nonce to newNonce" signed by the owner of address.
-)
-```
-
-Sets `nonce(address) = newNonce` and executes the transfers in `pendingTransfers` whose sender is `address` and nonce is less than or equal to `newNonce`. When a pending transfer is executed, it is removed from `pendingTransfers`, the amount is subtracted from the balance of `fromAddress` and added to the balance of `toAddress`.
-
-```
-Withdraw(
-    fromAddress : Address
-    toAddress : L1 Address
-    amount : Value
-    )
-```
-
-Decreases the balance of `fromAddress` by `amount` and sends `amount` ETH to`toAddress` on L1.
+Decreases the balance of `fromAddress` by `amount` and sends `amount` ETH from the L1 contracts balance to `toAddress` on L1.
 
 ## Frozen mode
 
-If the operator doesn't publish a new batch in 3 days, anyone can call a freeze command in the contract, making the contract enter a *frozen mode*.
+If the operator doesn't publish a new block in 3 days, anyone can call a freeze command in the contract, making the contract enter a *frozen mode*.
 
 When the contract is frozen, the following happens:
 
 1. Deposits are no longer possible.
-2. A map `withdrawnAmount : Address -> Value` is added to the contract storage, which maintains the total amounts that each user have withdrawn.
+2. A map `withdrawnAmount : Address -> Value` is added to the contract storage, which maintains the total amount that each user have withdrawn.
 
-In order to withdraw, a user with address `address` must provide to the L1 contract the witnesses to
+In order to withdraw, a user Alice must provide to the L1 contract the witnesses to the following.
 
-1. their balance `balance` and nonce `n` in some rollup block `b`.
-2. all pending transfers *from* them with nonces `n, n+1, ... current_nonce`, where `current_nonce` is their nonce in the latest rollup state. We denote the total amount as `sentAmount`.
-3. a set of pending transfers sent to them, in blocks that are all at least as new as *b* above. We denote the total amount as `recievedAmount`. All transfers must have been applied, meaning that the nonce of the sender is at least as large as the nonce of the transfer.
+1. `balance = balanceOf(aliceAddress)` in a rollup block `b` with `blockNum >= finalizedBlockNum(aliceAddress)`.
+2. If `blockNum == finalizedBlockNum(aliceAddress)`, we require witnesses to the set of pending transactions by Alice in block `b`. We denote the total sent amount as `sentAmount`.
+3. A set of pending transfers *to* Alice, where each pending transfer must be in a block that is at least as new as *b* above (otherwise the recieved amount would already be included in the `balance`), and strictly older than the sender's finalizedBlockNum. We denote the total amount as `recievedAmount`.
 
 When the L1 contract is given the above data, it sends the user the amount given by
 
-`balance + recievedAmount - sentAmount - withdrawnAmount(address)`
+`balance + recievedAmount - sentAmount - withdrawnAmount(aliceAddress)`
 
-and adds the withdrawn amount to `withdrawnAmount(addressf)`.
+and adds the withdrawn amount to `withdrawnAmount(aliceAddress)`.
+
+## Calldata usage
+
+For a batch of transfer from the same sender, the only data that needs to be provided as calldata is the data needed to update the sender's nonce, which is 5 bytes for the sender address (supporting up to 2^48 ~ 300 trillion accounts). This is already less calldata than regular rollups if the batch has only one transfer, and is much less per transfer for larger batches.
 
 ## Example 1: Single tranfer from Alice to Bob
 
-Alice wants to send 5 ETH to Bob. Her current nonce is 7. The procedure is as follows:
+Alice wants to send 5 ETH to Bob. Her current nonce is 7, and her current finalizedBlockNum is 2. The procedure is as follows:
 
-1. Alice signs a transfer
+1. Alice signs the transaction
     ```
-    transfer =
-        ( nonce = 8
-        , fromAddress = aliceAddress
+    transaction =
+        ( sender = aliceAddress
+        , nonce = 8
         , toAddress = bobAddress
         , amount = 5 ETH
         )
     ```
-    and sends it to the operator.
-2. The operator includes the operation `AddTransfer(transfer, signature)` in the next rollup batch, which adds the transfer to the set of pending transfers in the off-chain state.
-3. The operator sends a witness of the pending transfer to Alice.
-4. Once Alice have the witness, she signes the message "Update nonce to 8" and sends this signed message to the operator.
+    and sends the transaction and the signature to the operator.
+2. The operator includes the operation `AddTransaction(transaction, signature)` in the next rollup block, which adds the transactions to the set of pending transactions in the rollup state.
+3. The operator sends a witness of the pending transactions to Alice.
+4. Once Alice have the witnesses, she signes the message "Finalize block 123" (123 is the blockNum of the block containing the pending transaction) and sends this signed message to the operator.
 5. The operator includes the operation
    ```
-   UpdateNonce(
+   IncrementBatchNum(
      address = aliceAddress
-   , newNonce = 8
-   , signature = signature
+     signature = signature
    )
    ```
-   in the next rollup batch, which updates Alice's nonce in the on-chain state and applies the transfer to Bob in the off-chain state.
-6. The operator publishes the new off-chain state, where Bob's balance is increased by 5 ETH, and Alice's balance is decrease by 5 ETH.
+   in the next rollup block, which has block number 124. Alice's finalizedBlockNum is set to 123, and the transfer to Bob is executed.
+6. The operator gives Alice and Bob the witnesses to their updated balances.
 
 ### Proof of safety in case the operator misbehaves
 
-The operator may misbehave in several stages in the example above. If this happens, users can exit by sending a `ForceWithdrawal` operation to the L1 inbox. If the operator then doesn't add a new batch in 3 days, anyone can call the freeze command on L1, and the rollup is frozen. For Alice and Bob, there are three scenarios:
+The operator may misbehave in several stages in the example above. If this happens, users can exit by sending a `ForceWithdrawal` operation to the L1 inbox. Then, either the operator will process the withdrawal requests in the next rollup block, or it will stop publishing new blocks. If the operator doesn't add a new block in 3 days, anyone can call the freeze command on L1, and the rollup is frozen. For Alice and Bob, there are three scenarios:
 
 * The transfer from Alice to Bob was not applied (it is either pending or wasn't included at all). Then Alice will use a witness of her latest balance to exit.
-* The transfer was applied, but the operator didn't provide the witnesses to the new balances of Alice and Bob. In this case, Alice have a witness of the pending transfer to Bob (otherwise she wouldn't update her nonce). Alice can then withdraw using the witness of her previous balance (without the transfer to Bob), plus a witness to the pending transfer to Bob. Bob may withdraw with his previous balance, plus a witness of the pending transfer from Alice, which he could obtain from Alice.
+* The transfer was applied, but the operator didn't provide the witnesses to the new balances of Alice and Bob. In this case, Alice have a witness of the pending transfer to Bob (otherwise she wouldn't finalize the block). Alice can then withdraw using the witness of her previous balance (before the transfer to Bob), plus a witness to the pending transfer to Bob. Bob may withdraw with his previous balance, plus a witness of the pending transfer from Alice, which he could ask to get from Alice.
 
 In all three cases, both Alice's and Bob's (and all other user's) funds are safe.
 
-# Example 2: Batch of transfers from Alice to 1000 recipients
+## Example 2: Batch of transfers from Alice to 1000 recipients
 
-Suppose Alice is a big employer and want to send salaries to 1000 people. She may then batch them all together to save calldata. The procedure for this is the same as in Example 1 above, but instead of updating her nonce after each transfer, Alice will only update her nonce after the operator has added all 1000 transfers to the set of pending transfers, and she has recieved the witnesses to all off them from the operator.
+Suppose Alice is a big employer and want to send salaries to 1000 people. She may then batch them all together to save calldata. The procedure for this is the same as in Example 1 above, but she will finalize a block only after all 1000 transfers, and she has recieved the witnesses to all of the pending transfers from the operator.
 
-# Calldata usage
+## Open question: How to generalize this proposal to support smart contracts?
 
-For a batch of transfer from the same sender, the only data that needs to be provided as calldata is the data needed to update the sender's nonce, which is 6 bytes for the sender address (supporting up to 2^48 ~ 300 trillion accounts) and 2 bytes to specify how much the nonce is increased. In total **8 bytes for a batch of up to (2^16 = 65536) transfers from the same sender**. This is already less calldata than regular rollups if the batch has only one transfer, and is much less per transfer for larger batches.
+## Similar ideas
 
-# Open question: How to generalize this proposal to support smart contracts?
-
-# TODO
-
-- [x] Describe deposits and withdrawals in the normal case
-- [x] Add examples of how to use the rollup, and what data must be stored by each user
-- [x] Add example of how to withdraw in the case of a contract freeze
-- [x] Estimate amortized gas costs per transfer
-- [ ] After the above is done, publish the document to ethresear.ch to get some more feedback
-- [ ] Do more research to see if the concept can be generalized to contracts, and not just transfers
+https://ethresear.ch/t/minimal-fully-generalized-s-ark-based-plasma/5580
+https://ethresear.ch/t/plasma-snapp-fully-verified-plasma-chain/3391
+https://ethresear.ch/t/plasma-snapp-1-bit/4802
+https://ethresear.ch/t/mvr-minimally-viable-rollback/7538
