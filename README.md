@@ -1,5 +1,7 @@
 # Springrollup: A zk-rollup that allows a sender to batch an unlimited number of transfers with only 6 bytes of calldata per batch
 
+(The newest version of this document can always be found on [hackmd](https://hackmd.io/@albus/BkMFnuNXK) or [GitHub](https://github.com/adompeldorius/springrollup))
+
 We introduce Springrollup: a Layer 2 solution which has the same security assumptions as existing zk-rollups, but uses much less on-chain data. In this rollup, a sender can batch an arbitrary number of transfers to other accounts while only having to post their address as calldata, which is 6 bytes if we want to support up to 2^48 ~ 300 trillion accounts. As a by-product we also achieve increased privacy, since less user data is posted on-chain.
 
 ## General framework
@@ -11,7 +13,7 @@ The rollup state is divided in two parts:
 - **On-chain available state**: State *with* on-chain data availability. All changes to this state must be provided as calldata by the operator.
 - **Off-chain available state**: State *without* on-chain data availability. This state will be provided by the operator off-chain.
 
-The on-chain available state can always be reconstructed from the calldata, while the off-chain available state may be withheld by the operater in the worst case scenario (but the rollup design guarantees that users' funds will still be safe).
+The on-chain available state can always be reconstructed from the calldata, while the off-chain available state may be withheld by the operater in the worst case scenario (but we will show that our rollup design guarantees that users' funds will still be safe).
 
 The L1 contract stores
 
@@ -41,7 +43,7 @@ Our proposal is neither of the above, and is described below.
 
 #### Transfers
 
-When a user sends L2 transfers to the operator, they are not processed immediately. Instead, they are added to a set of pending transactions in the off-chain available state. After the rollup state has been updated by the operator, the user recieves witnesses to both their balance and to all their pending transactions in the new rollup state from the operator. When the sender wants to process their pending transactions, they sign and send an operation `ProcessTransactions` to the operator. The operator then adds this operation in the next rollup block, which processes all the pending transactions of the sender, and sets a value `lastSeenBlockNum(sender) = blockNum` in the on-chain available state, where `blockNum` is the last block number. After a rollup block has been posted, the operator provides witnesses to all updated balances to the affected users.
+When a user sends L2 transfers to the operator, they are not processed immediately. Instead, they are added to a set of pending transactions in the off-chain available state. After the rollup state has been updated by the operator, the user recieves (off-chain) witnesses to both their balance and to all their pending transactions in the new rollup state from the operator. In order to process their pending transactions, the user signs and sends an operation `ProcessTransactions` to the operator. The operator then adds this operation in the next rollup block, which processes all the pending transactions of the sender, and sets a value `lastSeenBlockNum(sender) = blockNum` in the on-chain available state, where `blockNum` is the last block number. After a rollup block has been posted, the operator provides witnesses to all updated balances to the affected users.
 
 #### Calldata usage
 
@@ -49,9 +51,9 @@ The only data that needs to be provided as calldata in each rollup block (ignori
 
 #### Frozen mode
 
-Under normal circumstances, a user may withdraw their funds by sending an L2 transfer to an L1 address that they own. If the transfer is censored by the operator, the user may instead send a `ForceWithdrawal` operation to the inbox on L1, which the operator is forced to process when posting the next rollup block.
+Under normal circumstances, a user may withdraw their funds by sending an L2 transfer to an L1 address that they own. If the transfer is censored by the operator, the user may instead send a `ForceWithdrawal` operation to the inbox on L1, which the operator is forced to process in the next rollup block.
 
-If the operator don't post a new rollup block within 3 days, anyone can call a `Freeze` command in the L1 contract. When the rollup is frozen, users may withdraw the amount determined by
+If the operator doesn't post a new rollup block within 3 days, anyone can call a `Freeze` command in the L1 contract. When the rollup is frozen, users may withdraw the amount determined by
 
 * their balance in a block `b` with `blockNum >= lastSeenBlockNum(address)`,
 * *minus* the total amount *sent from* the user in the pending transactions in the same block `b` (if `blockNum == lastSeenBlockNum(address)`),
@@ -69,7 +71,7 @@ Each L2 account's balance is represented as the sum of a balance stored in the o
 
 `balanceOf(address) = onChainBalanceOf(address) + offChainBalanceOf(address)`
 
-The reason for this is to simplify deposits and withdrawals. When a user make a deposit or a withdrawal on L1, only their on-chain balance is updated. When an L2 transfer is processed, only the off-chain balances of the sender and recipient are updated.
+The reason for this is to simplify deposits and withdrawals. When a user makes a deposit or a withdrawal on L1, only their on-chain balance is updated. On the other hand, when an L2 transfer is processed, only the off-chain balances of the sender and recipient are updated.
 
 Note that either `onChainBalanceOf(address)` or `offChainBalanceOf(address)` may be negative, but their sum is always non-negative.
 
