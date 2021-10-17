@@ -234,6 +234,10 @@ Suppose Alice is a big employer and want to send salaries to 1000 people. She ma
 
 This design has increased privacy compared to existing rollups, since an honest operator will not make users balances or transactions public, but only give each user the witnesses to their updated balances.
 
+### Token support
+
+We described a MVP without token support, but it is trivial to add support for ERC-20 tokens and NFTs by adding separate balances for these.
+
 ### Smart contracts
 
 Further research should be done to figure out how to support smart contracts in this design.
