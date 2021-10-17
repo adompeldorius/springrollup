@@ -170,7 +170,7 @@ In order to withdraw from an L2 account, a user Alice must provide to the L1 con
 
 1. `offChainBalanceOf(alice)` in some rollup block `b` with `blockNum >= lastSeenBlockNum(alice)`.
 2. If `blockNum == lastSeenBlockNum(alice)`, we also require witnesses to the set of pending transactions *from* Alice in block `b`. We denote the total sent amount as `sentAmount`.
-3. A set of pending transfers *to* Alice. Each pending transfer's block must be at least as new as *b* above (to be sure it is not already included in `offChainBalanceOf(alice)`). Also, each pending transfer must have been processed, meaning that it's block cannot be newer than the sender's `lastSeenBlockNum`. We denote the total recieved amount as `recievedAmount`.
+3. A set of pending transfers *to* Alice. Each pending transfer must have been processed, meaning that it's block cannot be newer than the sender's `lastSeenBlockNum`. Also, each pending transfer's block must be at least as new as *b* above (otherwise it would already be included in `offChainBalanceOf(alice)`). We denote the total recieved amount as `recievedAmount`.
 
 When the L1 contract is given the above data, it sends to Alice the amount (if non-negative) given by
 
@@ -224,7 +224,7 @@ In all three cases, both Alice's and Bob's (and all other user's) funds are safe
 
 ## Example 2: Batch of transfers from Alice to 1000 recipients
 
-Suppose Alice is a big employer and want to send salaries to 1000 people. She may then batch them all together to save calldata. The procedure for this is the same as in Example 1 above, but she will add all 1000 transactions to `pendingTransactions` before sending the `ProcessTransactions` operation.
+Suppose Alice is a big employer and want to send salaries to 1000 people. She may then batch the transfers to save calldata. The procedure for this is the same as in Example 1 above, but she will add all 1000 transactions to `pendingTransactions` before sending the `ProcessTransactions` operation.
 
 ## Discussion
 
