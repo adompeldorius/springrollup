@@ -217,12 +217,12 @@ Alice wants to send 5 ETH to Bob. Her current nonce is 7, and her current `lastS
 
 ### Security argument
 
-The operator may misbehave in several stages in the example above. If this happens, users can exit by sending a `ForceWithdrawal` operation to the L1 inbox. Then, either the operator will process the withdrawal requests in the next rollup block, or it will stop publishing new blocks. If the operator doesn't add a new block in 3 days, anyone can call the freeze command on L1, and the rollup is frozen. For Alice and Bob, there are three scenarios:
+The operator may misbehave in several stages in the example above. If this happens, users can exit by sending a `ForceWithdrawal` operation to the L1 inbox. Then, either the operator will process the withdrawal requests in the next rollup block, or it will stop publishing new blocks. If the operator doesn't add a new block in 3 days, anyone can call the freeze command on L1, and the rollup is frozen. For Alice and Bob, there are two scenarios:
 
 * The transfer from Alice to Bob has not been processed (it is either pending or wasn't included at all). Then Alice will use a witness of her balance in some block at least as new as 67 (which is her `lastSeenBlockNum`) to exit.
 * The transfer was processed, but the operator didn't provide the witnesses to the new balances of Alice and Bob. In this case, Alice have a witness of her balance in block 123 and of the pending transfer to Bob (otherwise she wouldn't sign the `ProcessTransactions` operation). Alice can then withdraw using the witness of her balance in block 123, plus a witness to the pending transfer to Bob. Bob may withdraw with a witness to his balance in some block at least as new as his `lastSeenBlockNum`, plus a witness of the pending transfer from Alice, which he could get from Alice.
 
-In all three cases, both Alice's and Bob's (and all other user's) funds are safe.
+In all both cases, both Alice's and Bob's (and all other user's) funds are safe.
 
 ## Example 2: Batch of transfers from Alice to 1000 recipients
 
