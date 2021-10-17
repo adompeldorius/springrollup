@@ -187,7 +187,7 @@ and decreases `onChainBalanceOf(alice)` by the withdrawn amount. If the above am
 
 **Remark:** It may happen that Alice withdraws her funds, and then later is made aware of a transfer from Bob that she didn't include in the withdrawal. She may then add a new withdrawal request where she include Bob's transfer along with the same transfers as last time.
 
-## Example 1: Single tranfer from Alice to Bob
+## Example 1: Single transfer from Alice to Bob
 
 Alice wants to send 5 ETH to Bob. Her current nonce is 7, and her current `lastSeenBlockNum` is 67. The procedure is as follows:
 
