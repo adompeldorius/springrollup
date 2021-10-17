@@ -226,7 +226,7 @@ In all both cases, both Alice's and Bob's (and all other user's) funds are safe.
 
 ## Example 2: Batch of transfers from Alice to 1000 recipients
 
-Suppose Alice is a big employer and want to send salaries to 1000 people. She may then batch the transfers to save calldata. The procedure for this is the same as in Example 1 above, but she will add all 1000 transactions to `pendingTransactions` before sending the `ProcessTransactions` operation.
+Suppose Alice is a big employer and want to send salaries to 1000 people. She may then batch the transfers to save calldata. The procedure for this is the same as in Example 1 above, but she will add all 1000 transactions to `pendingTransactions` before sending the `ProcessTransactions` operation. Note that it is not necessary to add all 1000 transfers in the same rollup block, she may continue to add pending transactions in many rollup blocks before calling `ProcessTransactions`.
 
 ## Discussion
 
