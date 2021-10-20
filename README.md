@@ -132,7 +132,7 @@ ProcessTransactions(
 
 This operation processes all pending transactions *from* `sender` in the last published rollup block (i.e. not the currently in-process block), which is required to have block number `blockNum`, and sets `lastSeenBlockNum(sender)` to `blockNum`.
 
-When a transaction is processed, it is removed from `pendingTransactions`, the amount is subtracted from `offChainBalanceOf(sender)` and added to `offChainBalanceOf(recipient)`. If the sender has insufficient funds for the transfer, meaning that `amount > balanceOf(sender)`, the transaction fails and is just removed from `pendingTransactions`.
+When a transaction is processed, it is removed from `pendingTransactions`, the amount is subtracted from `offChainBalanceOf(sender)` and added to `offChainBalanceOf(recipient)`. We require that the sender has sufficient funds for the transfer, meaning that `balanceOf(sender) > amount`. If not, the `ProcessTransaction` operation is invalid and cannot be included in the rollup block.
 
 The sender should make sure they possess the witnesses for their balance and all their `pendingTransactions` in block `blockNum` before sending this operation to the operator, since they would need this in order to withdraw in case the rollup is frozen.
 
