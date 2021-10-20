@@ -67,11 +67,17 @@ The security of the protocol is proven by showing that each user always has the 
 
 ### Rollup state
 
-Each L2 account's balance is represented as the sum of a balance stored in the on-chain available state and a balance stored in the off-chain available state:
+#### Balances
+
+In order to simplify deposits and withdrawals, we represent the balance of an L2 account as the sum of a balance stored in the on-chain available state and a balance stored in the off-chain available state:
 
 `balanceOf(address) = onChainBalanceOf(address) + offChainBalanceOf(address)`
 
-The reason for this is to simplify deposits and withdrawals. When a user makes a deposit or a withdrawal on L1, only their on-chain balance is updated. On the other hand, when an L2 transfer is processed, only the off-chain balances of the sender and recipient are updated.
+The on-chain available balance keeps track of the amount that is deposited to the account from L1 *minus* the amount withdrawn to L1 from the account.
+
+The off-chain available balance, on the other hand, keeps track of the amount recieved by L2 transfers to the account *minus* the amount sent by L2 transfers from the account.
+
+When a user makes a deposit or a withdrawal on L1, only their on-chain balance is updated, and when an L2 transfer is processed, only the off-chain balances of the sender and recipient are updated.
 
 Note that either `onChainBalanceOf(address)` or `offChainBalanceOf(address)` may be negative, but their sum is always non-negative.
 
@@ -185,7 +191,9 @@ When the L1 contract is given the above data, it sends to Alice the amount (if n
 
 and decreases `onChainBalanceOf(alice)` by the withdrawn amount. If the above amount is negative, the withdrawal request fails and nothing happens.
 
-**Remark:** It may happen that Alice withdraws her funds, and then later is made aware of a transfer from Bob that she didn't include in the withdrawal. She may then add a new withdrawal request where she include Bob's transfer along with the same transfers as last time.
+**Remark 1:** Notice that the sent amount in the pending transfers is *only* subtracted in the special case where Alice uses the `offChainBalance(Alice)` in the block `lastSeenBlockNum(Alice)`. The reason for this is that the pending transfers in   block `lastSeenBlockNum(Alice)` were actually processed in the next block `lastSeenBlockNum(Alice)+1`, but Alice’s balance in block `lastSeenBlockNum(Alice)` doesn’t reflect that, so the sent amount must be subtracted to get Alice's updated balance.
+
+**Remark 2:** It may happen that Alice withdraws her funds, and then later is made aware of a transfer from Bob that she didn't include in the withdrawal. She may then add a new withdrawal request where she include Bob's transfer along with the same transfers as last time.
 
 ## Example 1: Single transfer from Alice to Bob
 
