@@ -4,3 +4,6 @@ proof.json
 *.ptau
 .direnv/
 .history
+public.json
+*.zkey
+*_js/

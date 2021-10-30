@@ -1,0 +1,13 @@
+{
+  "oldRoot": "5471696653679409820391410500834046592055508834790782684702862396586343005856"
+, "senderIdx": 1
+, "senderSign": 1
+, "senderAy": 12345
+, "senderBalance": 1000
+, "senderNumPendingTransactions": 0
+, "senderPendingTransactionsRoot": 0
+, "senderSiblings": [0,0,0]
+, "receiverIdx": 2
+, "receiverSiblings": [0,0]
+, "amount": 123
+}
