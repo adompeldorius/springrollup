@@ -7,9 +7,10 @@ include "../circomlib/circuits/poseidon.circom";
  * State Hash = Poseidon(e0, e1, e2, e3, e4)
  * e0: sign
  * e1: ay
- * e2: balance
- * e3: numPendingTransactions
- * e4: pendingTransactionsRoot
+ * e2: nonce
+ * e3: balance
+ * e4: numPendingTransactions
+ * e5: pendingTransactionsRoot
  * @input sign - {Bool} - babyjubjub sign
  * @input ay - {Field} - babyjubjub Y coordinate
  * @input balance - {Uint192} - account balance
@@ -21,19 +22,21 @@ include "../circomlib/circuits/poseidon.circom";
 template HashState() {
     signal input sign;
     signal input ay;
+    signal input nonce;
     signal input balance;
     signal input numPendingTransactions;
     signal input pendingTransactionsRoot;
     
     signal output out;
 
-    component hash = Poseidon(5);
+    component hash = Poseidon(6);
 
     hash.inputs[0] <== sign;
     hash.inputs[1] <== ay;
-    hash.inputs[2] <== balance;
-    hash.inputs[3] <== numPendingTransactions;
-    hash.inputs[4] <== pendingTransactionsRoot;
+    hash.inputs[2] <== nonce;
+    hash.inputs[3] <== balance;
+    hash.inputs[4] <== numPendingTransactions;
+    hash.inputs[5] <== pendingTransactionsRoot;
 
     hash.out ==> out;
 }
