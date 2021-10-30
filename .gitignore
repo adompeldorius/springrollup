@@ -1,0 +1,6 @@
+*.r1cs
+*.wtns
+proof.json
+*.ptau
+.direnv/
+.history
