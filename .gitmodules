@@ -1,12 +1,12 @@
 [submodule "src/circomlib"]
 	path = src/circomlib
 	url = git@github.com:iden3/circomlib.git
-[submodule "src/circuits"]
-	path = src/circuits
-	url = git@github.com:hermeznetwork/circuits.git
 [submodule "circom"]
 	path = circom
 	url = ./circom
 [submodule "snarkjs"]
 	path = snarkjs
 	url = ./snarkjs
+[submodule "circuits"]
+	path = circuits
+	url = git@github.com:hermeznetwork/circuits.git
