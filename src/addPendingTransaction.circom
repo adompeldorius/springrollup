@@ -2,13 +2,20 @@ pragma circom 2.0.0;
 
 include "circomlib/circuits/smt/smtprocessor.circom";
 include "circomlib/circuits/eddsaposeidon.circom";
+include "circomlib/circuits/mux1.circom";
 include "lib/hash-state.circom";
 include "lib/utils-bjj.circom";
 
+// Circuit to add a pending transaction
 template AddPendingTransaction (nLevels, pLevels) {
+  // State roots
   signal input oldRoot;
   signal output newRoot;
 
+  // 1 if regular transaction, 0 if transaction is no-op (used to fill a rollup block)
+  signal input enabled;
+
+  // Sender state
   signal input senderIdx;
   signal input senderSign;
   signal input senderAy;
@@ -23,10 +30,13 @@ template AddPendingTransaction (nLevels, pLevels) {
   signal input r8x;
   signal input r8y;
 
+  // Transaction data
   signal input receiverIdx;
   signal input receiverSiblings[pLevels];
-  
   signal input amount;
+
+  // Ensure that `enabled` is a bool (0 or 1)
+  enabled * (1 - enabled) === 0;
 
   // Check signature
   ////////
@@ -47,7 +57,7 @@ template AddPendingTransaction (nLevels, pLevels) {
 
   // verifies signature
   component sigVerifier = EdDSAPoseidonVerifier();
-  sigVerifier.enabled <== 1;
+  sigVerifier.enabled <== enabled;
 
   sigVerifier.Ax <== getAx.ax;
   sigVerifier.Ay <== senderAy;
@@ -73,7 +83,7 @@ template AddPendingTransaction (nLevels, pLevels) {
   pendingTransactions.isOld0 <== 1;
   pendingTransactions.newKey <== senderNumPendingTransactions;
   pendingTransactions.newValue <== hash.out;
-  pendingTransactions.fnc[0] <== 1;
+  pendingTransactions.fnc[0] <== enabled;
   pendingTransactions.fnc[1] <== 0;
 
   // Compute hash of old sender state
@@ -109,8 +119,16 @@ template AddPendingTransaction (nLevels, pLevels) {
   state.newKey <== senderIdx;
   state.newValue <== senderStateNew.out;
   state.fnc[0] <== 0;
-  state.fnc[1] <== 1;
+  state.fnc[1] <== enabled;
   
-  newRoot <== state.newRoot;
-  //newRoot <== 123;
+  // select output roots
+  ////////
+  // if tx is enabled, select new root
+  // otherwise, select old root
+  component newRootSelector = Mux1();
+  newRootSelector.c[0] <== oldRoot;
+  newRootSelector.c[1] <== state.newRoot;
+  newRootSelector.s <== enabled;
+
+  newRoot <== newRootSelector.out;
 }
