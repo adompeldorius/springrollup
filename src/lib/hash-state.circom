@@ -22,21 +22,15 @@ include "../circomlib/circuits/poseidon.circom";
 template HashState() {
     signal input sign;
     signal input ay;
-    signal input nonce;
     signal input balance;
-    signal input numPendingTransactions;
-    signal input pendingTransactionsRoot;
     
     signal output out;
 
-    component hash = Poseidon(6);
+    component hash = Poseidon(3);
 
     hash.inputs[0] <== sign;
     hash.inputs[1] <== ay;
-    hash.inputs[2] <== nonce;
-    hash.inputs[3] <== balance;
-    hash.inputs[4] <== numPendingTransactions;
-    hash.inputs[5] <== pendingTransactionsRoot;
+    hash.inputs[2] <== balance;
 
     hash.out ==> out;
 }

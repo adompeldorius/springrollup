@@ -2,7 +2,7 @@
 
 (The newest version of this document can always be found on [hackmd](https://hackmd.io/@albus/BkMFnuNXK) or [GitHub](https://github.com/adompeldorius/springrollup))
 
-We introduce Springrollup: a Layer 2 solution which has the same security assumptions as existing zk-rollups, but uses much less on-chain data. In this rollup, a sender can batch an arbitrary number of transfers to other accounts while only having to post their address as calldata, which is 6 bytes if we want to support up to 2^48 ~ 300 trillion accounts. As a by-product we also achieve increased privacy, since less user data is posted on-chain.
+We introduce Springrollup: a Layer 2 solution which has the same security assumptions as existing zk-rollups, but uses much less on-chain data. In this rollup, a sender can batch an arbitrary number of transfers to other accounts while only having to post their address as calldata, which is 6 bytes if we want to support up to $2^{48}$ ~ 300 trillion accounts. As a by-product we also achieve increased privacy, since less user data is posted on-chain.
 
 ## General framework
 
@@ -41,13 +41,30 @@ Our proposal is neither of the above, and is described below.
 
 ## Overview of the rollup design
 
+#### On-chain available state
+
+```
+OnChainAvailableState =
+  { lastSeenBlockNum : Map(L2 Address -> Integer) # The last block where the account sent a transaction.
+  , onChainBalanceOf : Map(L2 Address -> Value) # On-chain part of the balance of an account.
+  }
+```
+
+#### Off-chain available state
+
+```
+OffChainAvailableState =
+  { offChainBalanceOf : Map(L2 Address -> Value) # Off-chain part of the balance of an account.
+  }
+```
+
 #### Transfers
 
-When a user sends L2 transfers to the operator, they are not processed immediately. Instead, they are added to a set of pending transactions in the off-chain available state. After the rollup state has been updated by the operator, the user recieves (off-chain) witnesses to both their balance and to all their pending transactions in the new rollup state from the operator. In order to process their pending transactions, the user signs and sends an operation `ProcessTransactions` to the operator. The operator then adds this operation in the next rollup block, which processes all the pending transactions of the sender, and sets a value `lastSeenBlockNum(sender) = blockNum` in the on-chain available state, where `blockNum` is the last block number. After a rollup block has been posted, the operator provides witnesses to all updated balances to the affected users.
+A designated rollup operator recieves transactions from users and collects them in a transaction tree. After creating a transaction tree, the operator sends merkle proofs of the existence of each transaction in the tree to the senders of these transactions, which all sign the root hash if they see that the proof is valid. When executing the transactions in the block, only those transactions whose sender signed the root hash are processed. The balance is updated. After the rollup state has been updated by the operator, all users may recieve (off-chain) witnesses to their new balances from the operator.
 
 #### Calldata usage
 
-The only data that needs to be provided as calldata in each rollup block (ignoring deposits and withdrawals) is the set of accounts that have updated their `lastSeenBlockNum`, i.e. 6 bytes per address (supporting up to 2^48 ~ 300 trillion accounts). This is already less calldata than regular rollups if each user only added one pending transfer before calling `processTransactions`, and is much less per transfer when a user processes a large batch of transfers at once.
+The only data that needs to be provided as calldata in each rollup block (ignoring deposits and withdrawals) is the set of accounts that sent a transaction in that block, i.e. 6 bytes per address (supporting up to 2^48 ~ 300 trillion accounts). This is already less calldata than regular rollups if each user only made one transaction in the block, and is much less per transaction when a user sent a large number of transactions in a block.
 
 #### Frozen mode
 
@@ -55,9 +72,9 @@ Under normal circumstances, a user may withdraw their funds by sending an L2 tra
 
 If the operator doesn't post a new rollup block within 3 days, anyone can call a `Freeze` command in the L1 contract. When the rollup is frozen, users may withdraw the amount determined by
 
-* their balance in a block `b` with `blockNum >= lastSeenBlockNum(address)`,
-* *minus* the total amount *sent from* the user in the pending transactions in the same block `b` (if `blockNum == lastSeenBlockNum(address)`),
-* *plus* the total amount sent *to them* in a set of pending transfers in blocks at least as new as `b`, that have all been processed.
+* their balance in a block `b >= lastSeenBlockNum(address)-1`,
+* *minus* the total amount *sent from* the user in block `lastSeenBlockNum(address)` (if `b == lastSeenBlockNum(address)-1`),
+* *plus* the total amount sent *to them* in blocks newer than `b`.
 
 The user must provide witnesses to all the above data in order to withdraw their funds.
 
@@ -81,35 +98,6 @@ When a user makes a deposit or a withdrawal on L1, only their on-chain balance i
 
 Note that either `onChainBalanceOf(address)` or `offChainBalanceOf(address)` may be negative, but their sum is always non-negative.
 
-#### On-chain available state
-
-```
-OnChainAvailableState =
-  { lastSeenBlockNum : Map(L2 Address -> Integer) # The block number of a block in which the owner of the address possess a witness to their balance and pending transactions.
-  , onChainBalanceOf : Map(L2 Address -> Value) # On-chain part of the balance of an account.
-  }
-```
-
-#### Off-chain available state
-
-```
-OffChainAvailableState =
-  { offChainBalanceOf : Map(L2 Address -> Value) # Off-chain part of the balance of an account.
-  , nonceOf : Map(L2 Address -> Integer) # The current nonce of an account.
-  , pendingTransactions : Set(Transaction) # A set of transactions that have been added, but not processed yet.
-  }
-```
-
-where `Transaction` is the type
-
-```
-Transaction =
-  { sender : L2 Address
-  , recipient : L2 address or L1 address
-  , amount : Value
-  , nonce : Integer
-  }
-```
 
 ### L2 operations
 
@@ -197,22 +185,21 @@ and decreases `onChainBalanceOf(alice)` by the withdrawn amount. If the above am
 
 ## Example 1: Single transfer from Alice to Bob
 
-Alice wants to send 5 ETH to Bob. Her current nonce is 7, and her current `lastSeenBlockNum` is 67. The procedure is as follows:
+Alice wants to send 5 ETH to Bob. Her current `lastSeenBlockNum` is 67. The procedure is as follows:
 
-1. Alice signs and sends transaction
+1. Alice sends the transaction
     ```
     transaction =
         ( sender = alice
         , recipient = bob
         , amount = 5 ETH
-        , nonce = 7
         )
     ```
     to the operator.
-2. The operator includes the operation `AddTransaction(transaction, signature)` in the next rollup block (number 123), with the effect of adding the transaction to the set of pending transactions in the rollup state.
-3. After rollup block 123 is published on-chain, the operator sends a witness of the newly added pending transaction to Alice.
-4. Once Alice have the witness of her pending transaction in block 123, she signes the message "Process transactions in block 123" and sends this signed message to the operator.
-5. The operator includes the operation
+2. The operator includes this transaction in the in-process transaction tree.
+3. When the operator has recieved all transactions for the current block, it sends witnesses of the transactions to all senders in the block. (In particular, Alice recieves a witness of her transaction in the tree)
+3. Alice recieves the witness to her transaction, verifies it, and signs and sends the message "I have a valid witness of my transactions in the transaction tree with root hash 71cd24... in rollup block 123" to the operator.
+5. The operator includes all signatures, and the operation
    ```
    ProcessTransactions(
      address = alice
