@@ -2,11 +2,9 @@
 
 (The newest version of this document can always be found on [hackmd](https://hackmd.io/@albus/BkMFnuNXK) or [GitHub](https://github.com/adompeldorius/springrollup))
 
-We introduce Springrollup: a Layer 2 solution which has the same security assumptions as existing zk-rollups, but uses much less on-chain data. In this rollup, a sender can batch an arbitrary number of transfers to other accounts while only having to post their address as calldata, which is 6 bytes if we want to support up to $2^{48}$ ~ 300 trillion accounts. As a by-product we also achieve increased privacy, since less user data is posted on-chain.
+We introduce Springrollup: a Layer 2 solution which has the same security assumptions as existing zk-rollups, but uses much less on-chain data. The rollup allows a sender to batch an arbitrary number of transfers to other accounts while only having to post their rollup address on-chain (6 bytes if we want to support up to $2^{48}$ ~ 300 trillion accounts). As a by-product we also achieve increased privacy, since less user data is posted on-chain.
 
 ## General framework
-
-We start by introducing the general framework that we will use to describe the rollup.
 
 The rollup state is divided in two parts:
 
@@ -17,13 +15,13 @@ The on-chain available state can always be reconstructed from the calldata, whil
 
 The L1 contract stores
 
-- a common merkle state root to both parts of the state.
+- a common merkle state root to both the on-chain and off-chain parts of the state.
 - the rollup block number
 - the *inbox*
 
-The *inbox* is a list of deposit and withdrawal operations that users have added on L1. When posting a rollup block, the operator must process all operations in this list before processing the L2 operations included in the rollup block.
+The *inbox* is a list of deposit and withdrawal operations that users have posted on L1, used to prevent censorship by the operator. When posting a rollup block, the operator must process all operations in this list before processing the L2 operations included in the rollup block.
 
-The rollup operator is allowed to make changes to the rollup state by posting a rollup block to the L1 contract, which must include the following as calldata:
+The operator is allowed to make changes to the rollup state by posting a rollup block to the L1 contract, which must include the following as calldata:
 
 1. The new merkle state root.
 2. A diff between the old and the new on-chain available state.
@@ -37,9 +35,9 @@ If the above data is valid, the state root is updated and the inbox is emptied.
 - If the whole rollup state is in the off-chain available part and the on-chain available state is empty, we get validiums.
 - If both parts of the state contain account state, we get volitions (e.g. zk-porter).
 
-Our proposal is neither of the above, and is described below.
+Our proposal is different from all of the above examples.
 
-## Overview of the rollup design
+## High level description of Springrollup
 
 #### On-chain available state
 
